@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-09-28
+
 ### Fixed
 
 - A table declaring its own `rowid` column is refused, since it would turn
