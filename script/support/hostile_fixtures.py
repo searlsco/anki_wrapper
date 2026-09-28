@@ -170,3 +170,26 @@ write(
         zipfile.ZIP_DEFLATED,
     ),
 )
+
+
+# Deck JSON whose decoding would cost far more than the JSON's own size.
+write(
+    "large-deck-json.apkg",
+    zip_bytes(
+        [("collection.anki2", legacy_collection(empty_notes, {"1": {"name": "x" * 1_000_000, "dyn": 0}}))],
+        zipfile.ZIP_DEFLATED,
+    ),
+)
+
+
+# A collection config far larger than any real one, which is ignored rather
+# than decoded.
+def oversized_conf(db):
+    empty_notes(db)
+    db.execute("UPDATE col SET conf = ?", ('{"pad":"' + "0" * 1_000_000 + '","schedVer":2}',))
+
+
+write(
+    "oversized-conf.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(oversized_conf))], zipfile.ZIP_DEFLATED),
+)

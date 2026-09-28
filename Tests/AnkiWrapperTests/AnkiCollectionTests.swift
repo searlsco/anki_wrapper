@@ -262,6 +262,21 @@ import Testing
     }
   }
 
+  @Test func chargesDeckJsonForWhatDecodingItCosts() {
+    // A 1 MB deck name in a database far under the cap: decoding the JSON
+    // around it costs tens of times its size.
+    #expect(throws: AnkiPackageError.tooLarge("collection")) {
+      try AnkiCollection(
+        contentsOf: Self.hostile("large-deck-json.apkg"), maximumDatabaseSize: 20_000_000)
+    }
+  }
+
+  @Test func ignoresACollectionConfigTooLargeToBeReal() throws {
+    let collection = try AnkiCollection(contentsOf: Self.hostile("oversized-conf.apkg"))
+
+    #expect(collection.notes.isEmpty)
+  }
+
   @Test func refusesADatabaseLargerThanTheCapBeforeWritingItAll() throws {
     let url = try AnkiCollectionTests.fixture("collection.colpkg")
 

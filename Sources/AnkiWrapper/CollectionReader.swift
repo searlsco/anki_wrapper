@@ -6,6 +6,12 @@ import Foundation
 /// the same columns throughout.
 enum CollectionReader {
   private static let sharedTables = ["col", "notes", "cards", "revlog"]
+  /// Collection settings and a card's scheduling data run to a few
+  /// hundred bytes; past these they are ignored rather than decoded, since
+  /// decoding JSON costs far more memory than the JSON itself.
+  private static let maximumSettingsSize = 1 << 16
+  private static let maximumCardDataSize = 1 << 12
+  private static let jsonDecodingCost: Int64 = 32
   private static let modernTables = ["decks", "notetypes", "fields", "templates", "config"]
 
   static func read(
@@ -89,7 +95,8 @@ enum CollectionReader {
     }
     return (
       Date(timeIntervalSince1970: Double(created)),
-      try? JSONDecoder().decode(LegacyConfig.self, from: Data(conf.utf8))
+      conf.utf8.count <= maximumSettingsSize
+        ? try? JSONDecoder().decode(LegacyConfig.self, from: Data(conf.utf8)) : nil
     )
   }
 
@@ -101,7 +108,9 @@ enum CollectionReader {
     var version = 1
     try database.query("SELECT val FROM config WHERE KEY = 'schedVer'") {
       row throws(AnkiPackageError) in
-      version = (try? JSONDecoder().decode(Int.self, from: row.data(0))) ?? version
+      let value = row.data(0)
+      guard value.count <= maximumSettingsSize else { return }
+      version = (try? JSONDecoder().decode(Int.self, from: value)) ?? version
     }
     return version
   }
@@ -113,7 +122,7 @@ enum CollectionReader {
     try database.query("SELECT id, name, kind FROM decks ORDER BY id") {
       row throws(AnkiPackageError) in
       // `kind` holds a oneof: 1 is a normal deck, 2 a filtered one.
-      let kind = ProtobufMessage(row.data(2))
+      let kind = ProtobufMessage(row.data(2), keeping: [1, 2])
       decks.append(
         AnkiDeck(
           id: row.int(0), path: try budget.split(row.string(1), at: "\u{1f}"),
@@ -133,7 +142,7 @@ enum CollectionReader {
     var templates: [Int64: [AnkiTemplate]] = [:]
     try database.query("SELECT ntid, name, config FROM templates ORDER BY ntid, ord") {
       row throws(AnkiPackageError) in
-      let config = ProtobufMessage(row.data(2))
+      let config = ProtobufMessage(row.data(2), keeping: [1, 2])
       templates[row.int(0), default: []].append(
         AnkiTemplate(
           name: try budget.string(row.string(1)),
@@ -144,7 +153,7 @@ enum CollectionReader {
     try database.query("SELECT id, name, config FROM notetypes ORDER BY id") {
       row throws(AnkiPackageError) in
       let id = row.int(0)
-      let isCloze = ProtobufMessage(row.data(2))?.varint(1) == 1
+      let isCloze = ProtobufMessage(row.data(2), keeping: [1])?.varint(1) == 1
       notetypes.append(
         AnkiNotetype(
           id: id, name: try budget.string(row.string(1)), kind: isCloze ? .cloze : .standard,
@@ -183,10 +192,11 @@ enum CollectionReader {
     var decksJson = ""
     var modelsJson = ""
     try database.query("SELECT decks, models FROM col") { row throws(AnkiPackageError) in
-      // Decoding holds about as much again as the JSON itself.
       decksJson = try budget.string(row.string(0))
       modelsJson = try budget.string(row.string(1))
-      try budget.charge(Int64(decksJson.utf8.count + modelsJson.utf8.count))
+      // JSONDecoder indexes the whole document first, which measures at
+      // tens of times the JSON's own size.
+      try budget.charge(jsonDecodingCost * Int64(decksJson.utf8.count + modelsJson.utf8.count))
     }
     let decoder = JSONDecoder()
     let legacyDecks: [String: LegacyDeck]
@@ -267,7 +277,7 @@ enum CollectionReader {
 
   /// FSRS keeps its state in the card's `data` JSON as `s` and `d`.
   private static func memoryState(_ json: String) -> AnkiCard.MemoryState? {
-    guard json.hasPrefix("{"),
+    guard json.hasPrefix("{"), json.utf8.count <= maximumCardDataSize,
       let data = try? JSONDecoder().decode(CardData.self, from: Data(json.utf8)),
       let stability = data.s, let difficulty = data.d
     else { return nil }

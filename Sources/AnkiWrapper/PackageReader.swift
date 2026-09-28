@@ -46,7 +46,7 @@ enum PackageReader {
   {
     if let meta = archive.entries["meta"] {
       let data = try archive.data(for: meta, limit: maximumMetaSize)
-      guard let message = ProtobufMessage(data) else { throw .corruptEntry("meta") }
+      guard let message = ProtobufMessage(data, keeping: [1]) else { throw .corruptEntry("meta") }
       switch message.varint(1) {
       case 0:
         throw .corruptEntry("meta")

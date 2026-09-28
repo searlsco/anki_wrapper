@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Collection settings, card data and protobuf blobs can no longer cost far
+  more memory than the cap charges: oversized settings are ignored, deck
+  and notetype JSON is charged for what decoding it costs, and protobuf
+  fields nobody reads are never kept.
+
 ## [0.1.1] - 2026-09-28
 
 ### Fixed
