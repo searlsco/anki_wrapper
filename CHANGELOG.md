@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A virtual table disguised by the wording of its stored definition is
+  refused: SQLite's own classification decides what is a plain table.
+- Each table's rows are charged and reserved before reading, so arrays
+  never regrow past what the memory cap allowed.
+
 ## [0.1.2] - 2026-09-28
 
 ### Fixed

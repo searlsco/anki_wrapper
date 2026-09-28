@@ -193,3 +193,22 @@ write(
     "oversized-conf.apkg",
     zip_bytes([("collection.anki2", legacy_collection(oversized_conf))], zipfile.ZIP_DEFLATED),
 )
+
+
+# A virtual table whose stored definition hides behind a comment, so only
+# SQLite's own classification can tell.
+def disguised_virtual_notes(db):
+    db.execute("CREATE VIRTUAL TABLE notes USING rtree(id, a, b)")
+    db.commit()
+    db.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, False)
+    db.execute("PRAGMA writable_schema = ON")
+    db.execute(
+        "UPDATE sqlite_master SET sql = 'CREATE /*x*/ VIRTUAL TABLE notes USING rtree(id, a, b)' "
+        "WHERE name = 'notes'")
+    db.execute("PRAGMA writable_schema = OFF")
+
+
+write(
+    "notes-disguised-virtual-table.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(disguised_virtual_notes))]),
+)

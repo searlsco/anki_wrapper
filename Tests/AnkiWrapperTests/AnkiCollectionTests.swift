@@ -246,7 +246,9 @@ import Testing
     }
   }
 
-  @Test(arguments: ["notes-generated-column.apkg", "notes-virtual-table.apkg"])
+  @Test(arguments: [
+    "notes-generated-column.apkg", "notes-virtual-table.apkg", "notes-disguised-virtual-table.apkg",
+  ])
   func refusesATableThatRunsCodeWhenRead(name: String) {
     #expect(throws: AnkiPackageError.database("notes is not a table")) {
       try AnkiCollection(contentsOf: Self.hostile(name))

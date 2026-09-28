@@ -80,6 +80,18 @@ enum CollectionReader {
     }
   }
 
+  /// Charges for a table's rows before any is read and reserves room for
+  /// them all, so the array never regrows (which briefly holds both the old
+  /// buffer and one twice its size) past what was charged.
+  private static func reserve<Element>(
+    _ array: inout [Element], for table: String, in database: SQLiteDatabase, _ budget: Budget
+  ) throws(AnkiPackageError) {
+    var count: Int64 = 0
+    try database.query("SELECT COUNT(*) FROM \(table)") { row in count = row.int(0) }
+    try budget.charge(count * Int64(MemoryLayout<Element>.stride))
+    array.reserveCapacity(Int(count))
+  }
+
   private struct LegacyConfig: Decodable {
     let schedVer: Int?
   }
@@ -119,6 +131,7 @@ enum CollectionReader {
     throws(AnkiPackageError) -> [AnkiDeck]
   {
     var decks: [AnkiDeck] = []
+    try reserve(&decks, for: "decks", in: database, budget)
     try database.query("SELECT id, name, kind FROM decks ORDER BY id") {
       row throws(AnkiPackageError) in
       // `kind` holds a oneof: 1 is a normal deck, 2 a filtered one.
@@ -150,6 +163,7 @@ enum CollectionReader {
           answerFormat: try budget.string(config?.string(2) ?? "")))
     }
     var notetypes: [AnkiNotetype] = []
+    try reserve(&notetypes, for: "notetypes", in: database, budget)
     try database.query("SELECT id, name, config FROM notetypes ORDER BY id") {
       row throws(AnkiPackageError) in
       let id = row.int(0)
@@ -208,6 +222,10 @@ enum CollectionReader {
     } catch {
       throw .database("unreadable deck or notetype JSON: \(error)")
     }
+    try budget.charge(
+      Int64(
+        legacyDecks.count * MemoryLayout<AnkiDeck>.stride
+          + legacyModels.count * MemoryLayout<AnkiNotetype>.stride))
     var decks: [AnkiDeck] = []
     for (key, deck) in legacyDecks {
       guard let id = Int64(key) else { continue }
@@ -231,9 +249,9 @@ enum CollectionReader {
     throws(AnkiPackageError) -> [AnkiNote]
   {
     var notes: [AnkiNote] = []
+    try reserve(&notes, for: "notes", in: database, budget)
     try database.query("SELECT id, guid, mid, mod, tags, flds FROM notes ORDER BY id") {
       row throws(AnkiPackageError) in
-      try budget.charge(Int64(MemoryLayout<AnkiNote>.stride))
       notes.append(
         AnkiNote(
           id: row.int(0), guid: try budget.string(row.string(1)), notetypeId: row.int(2),
@@ -248,13 +266,13 @@ enum CollectionReader {
     throws(AnkiPackageError) -> [AnkiCard]
   {
     var cards: [AnkiCard] = []
+    try reserve(&cards, for: "cards", in: database, budget)
     try database.query(
       """
       SELECT id, nid, did, odid, ord, type, queue, due, ivl, factor, reps, lapses, odue, data
       FROM cards ORDER BY id
       """
     ) { row throws(AnkiPackageError) in
-      try budget.charge(Int64(MemoryLayout<AnkiCard>.stride))
       let deck = row.int(2)
       let home = row.int(3)
       // A filtered deck parks the card's own due in `odue` while it holds it.
@@ -291,10 +309,10 @@ enum CollectionReader {
     _ database: SQLiteDatabase, _ budget: Budget, fromV1Scheduler: Bool
   ) throws(AnkiPackageError) -> [AnkiReview] {
     var reviews: [AnkiReview] = []
+    try reserve(&reviews, for: "revlog", in: database, budget)
     try database.query(
       "SELECT id, cid, ease, ivl, lastIvl, factor, time, type FROM revlog ORDER BY id"
     ) { row throws(AnkiPackageError) in
-      try budget.charge(Int64(MemoryLayout<AnkiReview>.stride))
       let kind = Int(row.int(7))
       var ease = Int(row.int(2))
       if fromV1Scheduler, kind == 0 || kind == 2, ease == 2 || ease == 3 {

@@ -45,15 +45,13 @@ final class SQLiteDatabase {
 
   /// Whether `name` is an ordinary table: not a view, not a virtual table,
   /// and without generated columns. Any of those runs code the file chose
-  /// when a row is read, which can be made to never finish.
+  /// when a row is read, which can be made to never finish. SQLite's own
+  /// classification decides, not the schema's text, which a file can word
+  /// however it likes.
   func isPlainTable(_ name: String) throws(AnkiPackageError) -> Bool {
-    var definition: String?
-    try query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '\(name)'") { row in
-      definition = row.string(0)
-    }
-    guard let definition,
-      !definition.uppercased().hasPrefix("CREATE VIRTUAL TABLE")
-    else { return false }
+    var type: String?
+    try query("PRAGMA main.table_list('\(name)')") { row in type = row.string(2) }
+    guard type == "table" else { return false }
     var hidden = false
     try query("PRAGMA table_xinfo('\(name)')") { row in
       if row.int(6) != 0 { hidden = true }
