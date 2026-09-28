@@ -253,7 +253,7 @@ import Testing
   @Test(arguments: [
     "notes-view.apkg", "notes-generated-column.apkg", "notes-virtual-table.apkg",
     "notes-disguised-virtual-table.apkg", "view-chain.apkg", "many-indexes.apkg",
-    "wide-indexes.apkg", "looping-btree.apkg",
+    "wide-indexes.apkg", "looping-btree.apkg", "generated-not-null.apkg",
   ])
   func refusesASchemaThatRunsCodeOrCostsTime(name: String) {
     expectRefused(name)

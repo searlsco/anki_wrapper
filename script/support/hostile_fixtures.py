@@ -403,3 +403,17 @@ write(
     "looping-btree.apkg",
     zip_bytes([("collection.anki2", looping_btree())], zipfile.ZIP_DEFLATED),
 )
+
+
+# An extra table Anki never has, whose NOT NULL generated column an
+# integrity check would compute on every row.
+def generated_not_null(db):
+    empty_notes(db)
+    db.execute("CREATE TABLE extra (x, y AS (length(printf('%.*c', 999999999, 'x'))) NOT NULL)")
+    db.executemany("INSERT INTO extra (x) VALUES (?)", ((i,) for i in range(3)))
+
+
+write(
+    "generated-not-null.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(generated_not_null))], zipfile.ZIP_DEFLATED),
+)

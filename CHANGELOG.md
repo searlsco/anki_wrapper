@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Generated columns are refused in every table, not only the ones read,
+  since the integrity check computes them on every row.
+
 ## [0.1.11] - 2026-09-28
 
 ### Fixed

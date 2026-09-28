@@ -87,14 +87,26 @@ final class SQLiteDatabase {
       withExtendedLifetime(limit) {}
     }
     var unexpected: String?
+    var tables: [String] = []
     try query("SELECT type, name, sql FROM sqlite_master") { row in
       let definition = row.isNull(2) ? nil : row.string(2)
       let plain =
         ["table", "index"].contains(row.string(0))
         && (definition.map { sql in Self.plainDefinitions.contains { sql.hasPrefix($0) } } ?? true)
       if !plain, unexpected == nil { unexpected = "\(row.string(0)) \(row.string(1))" }
+      if row.string(0) == "table" { tables.append(row.string(1)) }
     }
     if let unexpected { throw .database("unexpected schema object: \(unexpected)") }
+    // Every table, not just the ones read: the integrity check that
+    // follows enforces NOT NULL on all of them, computing any generated
+    // column, an expression the file wrote, on every row.
+    for table in tables {
+      var generated = false
+      try query("PRAGMA table_xinfo('\(table.replacingOccurrences(of: "'", with: "''"))')") { row in
+        if row.int(6) != 0 { generated = true }
+      }
+      if generated { throw .database("unexpected schema object: generated column in \(table)") }
+    }
   }
 
   deinit {
