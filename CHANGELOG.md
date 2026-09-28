@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-28
+
 ### Fixed
 
 - No query asks SQLite to sort: rows are read in stored order, which a
