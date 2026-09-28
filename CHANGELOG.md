@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-28
+
 ### Fixed
 
 - Collection settings, card data and protobuf blobs can no longer cost far
