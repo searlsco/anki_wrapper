@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Regenerates Tests/AnkiWrapperTests/Fixtures from the Open Anki JLPT decks
+# (MIT; vocabulary from tanos.co.uk under CC BY) using Anki's own Python
+# library. Needs python3, gh, zip, and unzip.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+ANKI_VERSION="26.9.3"
+UPSTREAM_TAG="v0.3.0"
+fixtures="$PWD/Tests/AnkiWrapperTests/Fixtures"
+work="$(mktemp -d)"
+trap 'rm -rf -- "$work"' EXIT
+
+venv=".build/fixture-venv"
+if [[ ! -x "$venv/bin/python" ]]; then
+  python3 -m venv "$venv"
+fi
+"$venv/bin/pip" install --quiet "anki==$ANKI_VERSION"
+
+mkdir -p "$work/upstream" "$work/collection" "$work/zip64"
+gh release download "$UPSTREAM_TAG" --repo jamsinclair/open-anki-jlpt-decks \
+  --pattern '*-n5-*' --pattern '*-n4-*' --dir "$work/upstream"
+
+"$venv/bin/python" script/support/fixtures.py "$work/upstream" "$fixtures" "$work/collection"
+cp "$work/upstream/open-anki-jlpt-n5-deck-$UPSTREAM_TAG.apkg" "$fixtures/n5-upstream.apkg"
+
+# The same legacy deck rewritten as a ZIP64 archive, the layout a
+# collection takes once its media passes 4 GB.
+unzip -q "$fixtures/n5-upstream.apkg" -d "$work/zip64"
+rm -f -- "$fixtures/n5-zip64.apkg"
+(cd "$work/zip64" && zip -q -fz -0 "$fixtures/n5-zip64.apkg" collection.anki2 media)

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Lint, then run the test suite. Set ANKI_WRAPPER_PACKAGES to a
+# colon-separated list of extra packages to also read them.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+script/lint
+swift test
