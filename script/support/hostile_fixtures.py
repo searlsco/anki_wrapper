@@ -28,11 +28,13 @@ def zip_bytes(entries, method=zipfile.ZIP_STORED):
     return buffer.getvalue()
 
 
-def legacy_collection(build, decks=None):
+def legacy_collection(build, decks=None, page_size=None):
     """A minimal schema 11 collection, adjusted by `build(db)`."""
     with tempfile.TemporaryDirectory() as scratch:
         path = os.path.join(scratch, "collection.anki2")
         db = sqlite3.connect(path)
+        if page_size:
+            db.execute(f"PRAGMA page_size = {page_size}")
         models = {
             "1": {
                 "name": "Basic",
@@ -356,4 +358,48 @@ def wide_indexes(db):
 write(
     "wide-indexes.apkg",
     zip_bytes([("collection.anki2", legacy_collection(wide_indexes))], zipfile.ZIP_DEFLATED),
+)
+
+
+# A revlog b-tree whose interior pages point every entry at the same child,
+# a chain deep enough that reading it visits the one leaf billions of times.
+# Only an integrity check notices.
+def revlog_rows(db):
+    empty_notes(db)
+    db.executemany(
+        "INSERT INTO revlog VALUES (?, 1, 3, 1, 0, 2500, 1000, 1)", ((i,) for i in range(1, 20_001))
+    )
+
+
+def looping_btree():
+    data = bytearray(legacy_collection(revlog_rows, page_size=512))
+    with tempfile.TemporaryDirectory() as scratch:
+        path = os.path.join(scratch, "c.anki2")
+        with open(path, "wb") as f:
+            f.write(data)
+        db = sqlite3.connect(path)
+        root = db.execute("SELECT rootpage FROM sqlite_master WHERE name = 'revlog'").fetchone()[0]
+        db.close()
+    size = 512
+
+    def header(page):
+        return (page - 1) * size + (100 if page == 1 else 0)
+
+    pages = len(data) // size
+    interior = [p for p in range(2, pages + 1) if data[header(p)] == 5 and p != root]
+    leaf = next(p for p in range(2, pages + 1) if data[header(p)] == 13)
+    chain = [root] + interior[:8]
+    for page, child in zip(chain, chain[1:] + [leaf]):
+        start, head = (page - 1) * size, header(page)
+        cells = struct.unpack(">H", data[head + 3 : head + 5])[0]
+        for i in range(cells):
+            offset = struct.unpack(">H", data[head + 12 + 2 * i : head + 14 + 2 * i])[0]
+            data[start + offset : start + offset + 4] = struct.pack(">I", child)
+        data[head + 8 : head + 12] = struct.pack(">I", child)
+    return bytes(data)
+
+
+write(
+    "looping-btree.apkg",
+    zip_bytes([("collection.anki2", looping_btree())], zipfile.ZIP_DEFLATED),
 )

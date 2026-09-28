@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A database whose b-tree loops back on itself (a few pages that read as
+  billions of rows) fails SQLite's quick check and is refused before any
+  table is read.
+
 ## [0.1.10] - 2026-09-28
 
 ### Fixed

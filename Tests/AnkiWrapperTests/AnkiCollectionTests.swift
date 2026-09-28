@@ -253,7 +253,7 @@ import Testing
   @Test(arguments: [
     "notes-view.apkg", "notes-generated-column.apkg", "notes-virtual-table.apkg",
     "notes-disguised-virtual-table.apkg", "view-chain.apkg", "many-indexes.apkg",
-    "wide-indexes.apkg",
+    "wide-indexes.apkg", "looping-btree.apkg",
   ])
   func refusesASchemaThatRunsCodeOrCostsTime(name: String) {
     expectRefused(name)
@@ -299,12 +299,18 @@ import Testing
     }
   }
 
-  @Test func countsRowsFromTheTableNotAnIndexTheFileSupplies() {
-    // 5,000 reviews behind an index that counts none: 88-byte rows cost
-    // about 440 KB, past a 300 KB cap only if they are counted.
-    #expect(throws: AnkiPackageError.tooLarge("collection")) {
+  @Test func refusesATableWhoseIndexDisagreesWithIt() {
+    // 5,000 reviews behind an index that counts none. The integrity check
+    // refuses the file; were it skipped, rows are counted from the table
+    // itself, and 88-byte rows cost about 440 KB, past a 300 KB cap.
+    #expect {
       try AnkiCollection(
         contentsOf: Self.hostile("lying-revlog-index.apkg"), maximumDatabaseSize: 300_000)
+    } throws: { error in
+      switch error as? AnkiPackageError {
+      case .database, .tooLarge: true
+      default: false
+      }
     }
   }
 

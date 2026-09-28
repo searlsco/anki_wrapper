@@ -109,7 +109,10 @@ enum CollectionReader {
     // The table's own b-tree, which the rows are read from: an index the
     // file supplies could count anything.
     try database.query("SELECT COUNT(*) FROM \(table) NOT INDEXED") { row in count = row.int(0) }
-    try budget.charge(count * Int64(MemoryLayout<Element>.stride))
+    let (cost, overflowed) = count.multipliedReportingOverflow(
+      by: Int64(MemoryLayout<Element>.stride))
+    guard !overflowed, count >= 0 else { throw .tooLarge(table) }
+    try budget.charge(cost)
     array.reserveCapacity(Int(count))
   }
 

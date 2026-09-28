@@ -43,6 +43,19 @@ final class SQLiteDatabase {
         return leftLength == rightLength ? 0 : (leftLength < rightLength ? -1 : 1)
       }, nil)
     try verifySchema()
+    try verifyStructure()
+  }
+
+  /// A b-tree whose pages point at the same child over and over reads as
+  /// billions of rows from a file of a few pages, and nothing short of an
+  /// integrity check notices. SQLite's quick check costs one pass over the
+  /// file's pages.
+  private func verifyStructure() throws(AnkiPackageError) {
+    var result: [String] = []
+    try query("PRAGMA quick_check(1)") { row in result.append(row.string(0)) }
+    guard result == ["ok"] else {
+      throw .database("damaged database: \(result.first ?? "no result")")
+    }
   }
 
   /// Loading a schema is work the file chooses: tens of thousands of
