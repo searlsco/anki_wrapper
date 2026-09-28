@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-28
+
 ### Fixed
 
 - A virtual table disguised by the wording of its stored definition is
