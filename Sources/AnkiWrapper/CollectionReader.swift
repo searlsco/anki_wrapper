@@ -12,6 +12,10 @@ enum CollectionReader {
   private static let maximumSettingsSize = 1 << 16
   private static let maximumCardDataSize = 1 << 12
   private static let jsonDecodingCost: Int64 = 32
+  /// A field or template row grouped under its notetype can start a
+  /// dictionary entry and an array of its own: measured at about 120
+  /// bytes beyond its strings.
+  private static let groupedRowCost: Int64 = 128
   private static let modernTables = ["decks", "notetypes", "fields", "templates", "config"]
 
   static func read(
@@ -24,13 +28,13 @@ enum CollectionReader {
     }
     let budget = Budget(remaining: maximumSize)
 
-    let (createdAt, legacyConfig) = try collectionRow(database)
+    let (createdAt, legacySchedulerVersion) = try collectionRow(database)
     let (decks, notetypes) =
       isModern
       ? (try modernDecks(database, budget), try modernNotetypes(database, budget))
       : try legacyDecksAndNotetypes(database, budget)
     let schedulerVersion =
-      isModern ? try modernSchedulerVersion(database) : legacyConfig?.schedVer ?? 1
+      isModern ? try modernSchedulerVersion(database) : legacySchedulerVersion ?? 1
     return AnkiCollection(
       format: format, createdAt: createdAt, decks: decks, notetypes: notetypes,
       notes: try notes(database, budget), cards: try cards(database, budget),
@@ -92,24 +96,24 @@ enum CollectionReader {
     array.reserveCapacity(Int(count))
   }
 
-  private struct LegacyConfig: Decodable {
-    let schedVer: Int?
-  }
-
+  /// The collection's creation time and, for a legacy collection, the
+  /// scheduler version its settings record. SQLite reads the one key out
+  /// of the settings JSON itself, however large the rest of it is.
   private static func collectionRow(_ database: SQLiteDatabase)
-    throws(AnkiPackageError) -> (Date, LegacyConfig?)
+    throws(AnkiPackageError) -> (Date, Int?)
   {
     var created: Int64 = 0
-    var conf = ""
-    try database.query("SELECT crt, conf FROM col") { row throws(AnkiPackageError) in
+    var schedulerVersion: Int?
+    try database.query(
+      """
+      SELECT crt, CASE WHEN json_valid(conf) THEN json_extract(conf, '$.schedVer') END
+      FROM col
+      """
+    ) { row throws(AnkiPackageError) in
       created = row.int(0)
-      conf = row.string(1)
+      schedulerVersion = row.isNull(1) ? nil : Int(row.int(1))
     }
-    return (
-      Date(timeIntervalSince1970: Double(created)),
-      conf.utf8.count <= maximumSettingsSize
-        ? try? JSONDecoder().decode(LegacyConfig.self, from: Data(conf.utf8)) : nil
-    )
+    return (Date(timeIntervalSince1970: Double(created)), schedulerVersion)
   }
 
   /// Anki treats a collection that never recorded a scheduler version as
@@ -150,11 +154,13 @@ enum CollectionReader {
     var fields: [Int64: [String]] = [:]
     try database.query("SELECT ntid, name FROM fields ORDER BY ntid, ord") {
       row throws(AnkiPackageError) in
+      try budget.charge(groupedRowCost)
       fields[row.int(0), default: []].append(try budget.string(row.string(1)))
     }
     var templates: [Int64: [AnkiTemplate]] = [:]
     try database.query("SELECT ntid, name, config FROM templates ORDER BY ntid, ord") {
       row throws(AnkiPackageError) in
+      try budget.charge(groupedRowCost)
       let config = ProtobufMessage(row.data(2), keeping: [1, 2])
       templates[row.int(0), default: []].append(
         AnkiTemplate(

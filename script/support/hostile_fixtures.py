@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import struct
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -185,7 +186,7 @@ write(
 # A collection config far larger than any real one, which is ignored rather
 # than decoded.
 def oversized_conf(db):
-    empty_notes(db)
+    v1_reviews(db)
     db.execute("UPDATE col SET conf = ?", ('{"pad":"' + "0" * 1_000_000 + '","schedVer":2}',))
 
 
@@ -211,4 +212,46 @@ def disguised_virtual_notes(db):
 write(
     "notes-disguised-virtual-table.apkg",
     zip_bytes([("collection.anki2", legacy_collection(disguised_virtual_notes))]),
+)
+
+
+# A modern collection whose fields table holds a hundred thousand rows, each
+# under a notetype of its own: tiny on disk, costly to group in memory.
+def modern_many_fields():
+    with tempfile.TemporaryDirectory() as scratch:
+        path = os.path.join(scratch, "collection.anki21b")
+        db = sqlite3.connect(os.path.join(scratch, "collection.sqlite"))
+        db.executescript(
+            """
+            CREATE TABLE col (id integer PRIMARY KEY, crt integer, conf text);
+            CREATE TABLE notes (id integer PRIMARY KEY, guid text, mid integer, mod integer,
+              tags text, flds text);
+            CREATE TABLE cards (id integer PRIMARY KEY, nid integer, did integer, odid integer,
+              ord integer, type integer, queue integer, due integer, ivl integer,
+              factor integer, reps integer, lapses integer, odue integer, data text);
+            CREATE TABLE revlog (id integer PRIMARY KEY, cid integer, ease integer, ivl integer,
+              lastIvl integer, factor integer, time integer, type integer);
+            CREATE TABLE decks (id integer PRIMARY KEY, name text, kind blob);
+            CREATE TABLE notetypes (id integer PRIMARY KEY, name text, config blob);
+            CREATE TABLE fields (ntid integer, ord integer, name text, config blob);
+            CREATE TABLE templates (ntid integer, ord integer, name text, config blob);
+            CREATE TABLE config (KEY text, val blob);
+            INSERT INTO col VALUES (1, 1400000000, '{}');
+            """
+        )
+        db.executemany(
+            "INSERT INTO fields VALUES (?, 0, '', x'')", ((i,) for i in range(100_000))
+        )
+        db.commit()
+        db.close()
+        subprocess.run(
+            ["zstd", "-q", "-19", os.path.join(scratch, "collection.sqlite"), "-o", path],
+            check=True)
+        with open(path, "rb") as f:
+            return f.read()
+
+
+write(
+    "modern-many-fields.apkg",
+    zip_bytes([("meta", b"\x08\x03"), ("collection.anki21b", modern_many_fields())]),
 )

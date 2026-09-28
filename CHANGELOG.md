@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A legacy collection's scheduler version is read however large its
+  settings are, so a v2 collection is never mistaken for v1.
+- Grouped field and template rows are charged for their containers.
+
 ## [0.1.3] - 2026-09-28
 
 ### Fixed

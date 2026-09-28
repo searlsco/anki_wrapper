@@ -273,10 +273,19 @@ import Testing
     }
   }
 
-  @Test func ignoresACollectionConfigTooLargeToBeReal() throws {
-    let collection = try AnkiCollection(contentsOf: Self.hostile("oversized-conf.apkg"))
+  @Test func readsTheSchedulerVersionFromAConfigOfAnySize() throws {
+    // v2 behind a megabyte of padding: its learning Hard stays Hard.
+    let reviews = try AnkiCollection(contentsOf: Self.hostile("oversized-conf.apkg")).reviews
 
-    #expect(collection.notes.isEmpty)
+    #expect(reviews.first?.kind == .learning)
+    #expect(reviews.first(where: { $0.id == 2000 })?.rating == .hard)
+  }
+
+  @Test func chargesGroupedFieldRowsForTheirContainers() {
+    #expect(throws: AnkiPackageError.tooLarge("collection")) {
+      try AnkiCollection(
+        contentsOf: Self.hostile("modern-many-fields.apkg"), maximumDatabaseSize: 10_000_000)
+    }
   }
 
   @Test func refusesADatabaseLargerThanTheCapBeforeWritingItAll() throws {

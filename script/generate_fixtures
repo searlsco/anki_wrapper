@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerates Tests/AnkiWrapperTests/Fixtures from the Open Anki JLPT decks
 # (MIT; vocabulary from tanos.co.uk under CC BY) using Anki's own Python
-# library. Needs python3, gh, zip, and unzip.
+# library. Needs python3, gh, zip, unzip, and zstd.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
