@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-28
+
 ### Fixed
 
 - A legacy collection's scheduler version is read however large its
