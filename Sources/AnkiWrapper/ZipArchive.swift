@@ -1,5 +1,6 @@
 import Compression
 import Foundation
+import zlib
 
 /// Reads entries out of a ZIP archive through its central directory,
 /// seeking to each one, so a collection with gigabytes of media costs only
@@ -40,14 +41,16 @@ struct ZipArchive {
   }
 
   /// The whole entry in memory, for the small ones (`meta`).
-  func data(for entry: Entry) throws(AnkiPackageError) -> Data {
+  func data(for entry: Entry, limit: Int64) throws(AnkiPackageError) -> Data {
+    try refuse(entry, over: limit)
     var result = Data()
     try stream(entry) { result.append($0) }
     return result
   }
 
   /// Streams the entry to a new file at `destination`.
-  func extract(_ entry: Entry, to destination: URL) throws(AnkiPackageError) {
+  func extract(_ entry: Entry, to destination: URL, limit: Int64) throws(AnkiPackageError) {
+    try refuse(entry, over: limit)
     guard FileManager.default.createFile(atPath: destination.path, contents: nil),
       let output = try? FileHandle(forWritingTo: destination)
     else { throw .unreadable("cannot write \(destination.lastPathComponent)") }
@@ -58,6 +61,12 @@ struct ZipArchive {
       do { try output.write(contentsOf: chunk) } catch { writeError = error }
     }
     if let writeError { throw .unreadable(writeError.localizedDescription) }
+  }
+
+  /// Streaming stops the moment an entry outgrows its declared size, so
+  /// capping the declared size caps what any entry can produce.
+  private func refuse(_ entry: Entry, over limit: Int64) throws(AnkiPackageError) {
+    guard entry.uncompressedSize <= UInt64(max(0, limit)) else { throw .tooLarge(entry.name) }
   }
 
   private func stream(_ entry: Entry, into sink: @escaping (Data) -> Void) throws(AnkiPackageError)
@@ -73,9 +82,10 @@ struct ZipArchive {
 
     var checksum = CRC32()
     var produced: UInt64 = 0
-    let emit: (Data) -> Void = { chunk in
-      checksum.update(chunk)
+    let emit: (Data) throws(AnkiPackageError) -> Void = { chunk in
       produced += UInt64(chunk.count)
+      guard produced <= entry.uncompressedSize else { throw .corruptEntry(entry.name) }
+      checksum.update(chunk)
       sink(chunk)
     }
 
@@ -83,13 +93,13 @@ struct ZipArchive {
     if entry.method == Self.stored {
       while remaining > 0 {
         let count = Int(min(UInt64(Self.chunkSize), remaining))
-        emit(try read(at: offset, count: count))
+        try emit(try read(at: offset, count: count))
         offset += UInt64(count)
         remaining -= UInt64(count)
       }
     } else {
       do {
-        let filter = try OutputFilter(.decompress, using: .zlib) { emit($0 ?? Data()) }
+        let filter = try OutputFilter(.decompress, using: .zlib) { try emit($0 ?? Data()) }
         while remaining > 0 {
           let count = Int(min(UInt64(Self.chunkSize), remaining))
           try filter.write(try read(at: offset, count: count))
@@ -147,7 +157,8 @@ struct ZipArchive {
       size = record.uint64(at: 40)
       start = record.uint64(at: 48)
     }
-    guard start + size <= fileSize, let bytes = read(handle: handle, at: start, count: Int(size))
+    guard size <= fileSize, start <= fileSize - size,
+      let bytes = read(handle: handle, at: start, count: Int(size))
     else { throw .notAPackage }
     return (bytes, count)
   }
@@ -208,21 +219,15 @@ struct ZipArchive {
 }
 
 struct CRC32 {
-  private static let table: [UInt32] = (0..<256).map { index in
-    (0..<8).reduce(UInt32(index)) { crc, _ in
-      crc & 1 == 1 ? 0xEDB8_8320 ^ (crc >> 1) : crc >> 1
-    }
-  }
-
-  private var crc: UInt32 = 0xFFFF_FFFF
+  private(set) var value: UInt32 = 0
 
   mutating func update(_ data: Data) {
-    for byte in data {
-      crc = Self.table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
-    }
+    let running = uLong(value)
+    value = UInt32(
+      data.withUnsafeBytes { bytes in
+        crc32(running, bytes.bindMemory(to: Bytef.self).baseAddress, uInt(bytes.count))
+      })
   }
-
-  var value: UInt32 { crc ^ 0xFFFF_FFFF }
 }
 
 extension Data {

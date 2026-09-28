@@ -51,6 +51,8 @@ cloze = col.new_note(col.models.by_name("Cloze"))
 cloze["Text"] = CLOZE
 col.add_note(cloze, sentences_deck)
 
+# FSRS, so cards carry the memory state modern collections keep.
+col.set_config("fsrs", True)
 n5 = col.decks.id_for_name(N5)
 col.decks.select(n5)
 random.seed(1)

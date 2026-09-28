@@ -24,6 +24,8 @@ gh release download "$UPSTREAM_TAG" --repo jamsinclair/open-anki-jlpt-decks \
 "$venv/bin/python" script/support/fixtures.py "$work/upstream" "$fixtures" "$work/collection"
 cp "$work/upstream/open-anki-jlpt-n5-deck-$UPSTREAM_TAG.apkg" "$fixtures/n5-upstream.apkg"
 
+python3 script/support/hostile_fixtures.py "$fixtures/hostile"
+
 # The same legacy deck rewritten as a ZIP64 archive, the layout a
 # collection takes once its media passes 4 GB.
 unzip -q "$fixtures/n5-upstream.apkg" -d "$work/zip64"

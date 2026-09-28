@@ -20,6 +20,7 @@ import Testing
     let collection = try AnkiCollection(contentsOf: Self.fixture(name))
 
     #expect(collection.format == format)
+    #expect(collection.createdAt == Date(timeIntervalSince1970: 1_790_582_400))
     #expect(collection.notes.count == 1391)
     #expect(collection.cards.count == 2778)
     #expect(collection.reviews.count == 206)
@@ -100,6 +101,16 @@ import Testing
     #expect(first.rating == .hard)
     #expect(first.interval == -330)
     #expect(first.reviewedAt == Date(timeIntervalSince1970: Double(first.id) / 1000))
+  }
+
+  @Test(arguments: ["collection.colpkg", "collection-legacy.colpkg", "n5-with-scheduling.apkg"])
+  func readsFsrsMemoryState(name: String) throws {
+    let cards = try AnkiCollection(contentsOf: Self.fixture(name)).cards
+
+    #expect(cards.filter { $0.memoryState != nil }.count == 20)
+    let first = try #require(cards.first { $0.id == 1 })
+    #expect(first.memoryState == AnkiCard.MemoryState(stability: 0.2838, difficulty: 9.812))
+    #expect(cards.filter { $0.queue == .new }.allSatisfy { $0.memoryState == nil })
   }
 
   @Test func readsASingleDeckExport() throws {
@@ -186,5 +197,69 @@ import Testing
     }
     #expect(
       collection.cards.allSatisfy { noteIds.contains($0.noteId) && deckIds.contains($0.deckId) })
+  }
+}
+
+@Suite struct SyntheticPackageTests {
+  static func hostile(_ name: String) throws -> URL {
+    try AnkiCollectionTests.fixture("hostile/\(name)")
+  }
+
+  @Test func translatesV1SchedulerLearningAnswers() throws {
+    let reviews = try AnkiCollection(contentsOf: Self.hostile("v1-scheduler.apkg")).reviews
+
+    #expect(reviews.map(\.rating) == [.again, .good, .easy, .hard, .good])
+    #expect(reviews.map(\.kind) == [.learning, .learning, .learning, .review, .relearning])
+  }
+
+  @Test func reportsABorrowedCardsHomeDue() throws {
+    let collection = try AnkiCollection(contentsOf: Self.hostile("v1-scheduler.apkg"))
+
+    let borrowed = try #require(collection.cards.first { $0.id == 2 })
+    #expect(borrowed.deckId == 1)
+    #expect(borrowed.filteredDeckId == 2)
+    #expect(borrowed.due == 42)
+    #expect(collection.cards.first { $0.id == 1 }?.due == 10)
+  }
+
+  @Test func rejectsAVersionTooLargeForAnyInteger() {
+    #expect(throws: AnkiPackageError.unsupportedVersion(Int.max)) {
+      try AnkiCollection(contentsOf: Self.hostile("meta-huge-version.apkg"))
+    }
+  }
+
+  @Test func refusesAnOversizedMetaBeforeInflatingIt() {
+    #expect(throws: AnkiPackageError.tooLarge("meta")) {
+      try AnkiCollection(contentsOf: Self.hostile("meta-oversized.apkg"))
+    }
+  }
+
+  @Test func rejectsAZip64RecordThatOverflows() {
+    #expect(throws: AnkiPackageError.notAPackage) {
+      try AnkiCollection(contentsOf: Self.hostile("zip64-overflow.apkg"))
+    }
+  }
+
+  @Test func refusesAViewInPlaceOfATable() {
+    #expect(throws: AnkiPackageError.database("notes is not a table")) {
+      try AnkiCollection(contentsOf: Self.hostile("notes-view.apkg"))
+    }
+  }
+
+  @Test func refusesADatabaseLargerThanTheCapBeforeWritingItAll() throws {
+    let url = try AnkiCollectionTests.fixture("collection.colpkg")
+
+    // The compressed entry is about 147 KB; the database it expands to
+    // about 602 KB, so these two caps stop each stage.
+    #expect(throws: AnkiPackageError.tooLarge("collection.anki21b")) {
+      try AnkiCollection(contentsOf: url, maximumDatabaseSize: 100_000)
+    }
+    #expect(throws: AnkiPackageError.tooLarge("collection.anki21b")) {
+      try AnkiCollection(contentsOf: url, maximumDatabaseSize: 300_000)
+    }
+    #expect(throws: AnkiPackageError.tooLarge("collection.anki2")) {
+      try AnkiCollection(
+        contentsOf: AnkiCollectionTests.fixture("n5-upstream.apkg"), maximumDatabaseSize: 1_000)
+    }
   }
 }

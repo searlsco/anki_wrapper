@@ -45,6 +45,15 @@ Reading blocks on file I/O and decompression, so do it off the main thread.
   deck as `deckId` and the filtered deck as `filteredDeckId`.
 - **Large archives.** Entries are read through the ZIP central directory,
   ZIP64 included, so gigabytes of media cost nothing.
+- **FSRS.** Cards in collections that schedule with FSRS carry their
+  `memoryState` (stability and difficulty). Review cards' `due` counts days
+  from the day of `createdAt`.
+- **Old collections.** Review ratings from Anki's retired v1 scheduler are
+  translated to today's four buttons, as Anki itself does on import.
+- **Untrusted files.** A package is treated as hostile input: sizes are
+  checked before anything is inflated, the collection database is capped
+  at `maximumDatabaseSize` (2 GiB by default), and its schema may not stand
+  a view in for a table or run code.
 
 Field contents are returned exactly as Anki stores them: HTML, furigana
 brackets (`漢字[かんじ]`), cloze markup and `[sound:…]` references are

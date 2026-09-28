@@ -19,6 +19,9 @@ final class SQLiteDatabase {
       sqlite3_close(handle)
       throw .database(message)
     }
+    // Nothing the file's schema declares may call functions or run code
+    // on our behalf.
+    sqlite3_exec(handle, "PRAGMA trusted_schema = OFF", nil, nil, nil)
     // Anki's tables declare this collation, and SQLite refuses to query
     // them until something by that name is registered.
     sqlite3_create_collation_v2(
@@ -40,12 +43,15 @@ final class SQLiteDatabase {
     sqlite3_close(handle)
   }
 
-  func hasTable(_ name: String) throws(AnkiPackageError) -> Bool {
-    var found = false
-    try query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '\(name)'") { _ in
-      found = true
+  /// Every table and view the file declares, by name. Reading only ever
+  /// queries names that are tables: a view in a table's place could run
+  /// an unbounded query.
+  func objectTypes() throws(AnkiPackageError) -> [String: String] {
+    var types: [String: String] = [:]
+    try query("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view')") { row in
+      types[row.string(0)] = row.string(1)
     }
-    return found
+    return types
   }
 
   func query(_ sql: String, row: (Row) throws(AnkiPackageError) -> Void) throws(AnkiPackageError) {

@@ -5,16 +5,61 @@ import Foundation
 /// the `col` row before that; notes, cards and the review log have kept
 /// the same columns throughout.
 enum CollectionReader {
+  private static let sharedTables = ["col", "notes", "cards", "revlog"]
+  private static let modernTables = ["decks", "notetypes", "fields", "templates", "config"]
+
   static func read(_ database: SQLiteDatabase, format: AnkiPackageFormat)
     throws(AnkiPackageError) -> AnkiCollection
   {
+    let objects = try database.objectTypes()
+    let isModern = objects["notetypes"] != nil
+    for name in sharedTables + (isModern ? modernTables : [])
+    where objects[name] != "table" {
+      throw .database("\(name) is not a table")
+    }
+
+    let (createdAt, legacyConfig) = try collectionRow(database)
     let (decks, notetypes) =
-      try database.hasTable("notetypes")
+      isModern
       ? (try modernDecks(database), try modernNotetypes(database))
       : try legacyDecksAndNotetypes(database)
+    let schedulerVersion =
+      isModern ? try modernSchedulerVersion(database) : legacyConfig?.schedVer ?? 1
     return AnkiCollection(
-      format: format, decks: decks, notetypes: notetypes, notes: try notes(database),
-      cards: try cards(database), reviews: try reviews(database))
+      format: format, createdAt: createdAt, decks: decks, notetypes: notetypes,
+      notes: try notes(database), cards: try cards(database),
+      reviews: try reviews(database, fromV1Scheduler: schedulerVersion < 2))
+  }
+
+  private struct LegacyConfig: Decodable {
+    let schedVer: Int?
+  }
+
+  private static func collectionRow(_ database: SQLiteDatabase)
+    throws(AnkiPackageError) -> (Date, LegacyConfig?)
+  {
+    var created: Int64 = 0
+    var conf = ""
+    try database.query("SELECT crt, conf FROM col") { row in
+      created = row.int(0)
+      conf = row.string(1)
+    }
+    return (
+      Date(timeIntervalSince1970: Double(created)),
+      try? JSONDecoder().decode(LegacyConfig.self, from: Data(conf.utf8))
+    )
+  }
+
+  /// Anki treats a collection that never recorded a scheduler version as
+  /// the original v1 scheduler.
+  private static func modernSchedulerVersion(_ database: SQLiteDatabase)
+    throws(AnkiPackageError) -> Int
+  {
+    var version = 1
+    try database.query("SELECT val FROM config WHERE KEY = 'schedVer'") { row in
+      version = (try? JSONDecoder().decode(Int.self, from: row.data(0))) ?? version
+    }
+    return version
   }
 
   private static func modernDecks(_ database: SQLiteDatabase) throws(AnkiPackageError)
@@ -138,34 +183,58 @@ enum CollectionReader {
     var cards: [AnkiCard] = []
     try database.query(
       """
-      SELECT id, nid, did, odid, ord, type, queue, due, ivl, factor, reps, lapses
+      SELECT id, nid, did, odid, ord, type, queue, due, ivl, factor, reps, lapses, odue, data
       FROM cards ORDER BY id
       """
     ) { row in
       let deck = row.int(2)
       let home = row.int(3)
+      // A filtered deck parks the card's own due in `odue` while it holds it.
       cards.append(
         AnkiCard(
           id: row.int(0), noteId: row.int(1), deckId: home == 0 ? deck : home,
           filteredDeckId: home == 0 ? nil : deck, ordinal: Int(row.int(4)),
-          kind: cardKind(Int(row.int(5))), queue: queue(Int(row.int(6))), due: row.int(7),
-          interval: row.int(8), easeFactor: Int(row.int(9)), reviewCount: Int(row.int(10)),
-          lapseCount: Int(row.int(11))))
+          kind: cardKind(Int(row.int(5))), queue: queue(Int(row.int(6))),
+          due: home == 0 ? row.int(7) : row.int(12), interval: row.int(8),
+          easeFactor: Int(row.int(9)), reviewCount: Int(row.int(10)),
+          lapseCount: Int(row.int(11)), memoryState: memoryState(row.string(13))))
     }
     return cards
   }
 
-  private static func reviews(_ database: SQLiteDatabase) throws(AnkiPackageError)
-    -> [AnkiReview]
+  private struct CardData: Decodable {
+    let s: Double?
+    let d: Double?
+  }
+
+  /// FSRS keeps its state in the card's `data` JSON as `s` and `d`.
+  private static func memoryState(_ json: String) -> AnkiCard.MemoryState? {
+    guard json.hasPrefix("{"),
+      let data = try? JSONDecoder().decode(CardData.self, from: Data(json.utf8)),
+      let stability = data.s, let difficulty = data.d
+    else { return nil }
+    return AnkiCard.MemoryState(stability: stability, difficulty: difficulty)
+  }
+
+  /// The v1 scheduler gave learning and relearning cards three buttons, so
+  /// its 2 and 3 there meant Good and Easy. Anki shifts them the same way
+  /// when it upgrades such a collection.
+  private static func reviews(_ database: SQLiteDatabase, fromV1Scheduler: Bool)
+    throws(AnkiPackageError) -> [AnkiReview]
   {
     var reviews: [AnkiReview] = []
     try database.query(
       "SELECT id, cid, ease, ivl, lastIvl, factor, time, type FROM revlog ORDER BY id"
     ) { row in
+      let kind = Int(row.int(7))
+      var ease = Int(row.int(2))
+      if fromV1Scheduler, kind == 0 || kind == 2, ease == 2 || ease == 3 {
+        ease += 1
+      }
       reviews.append(
         AnkiReview(
-          id: row.int(0), cardId: row.int(1), rating: AnkiReview.Rating(rawValue: Int(row.int(2))),
-          kind: reviewKind(Int(row.int(7))), interval: row.int(3), lastInterval: row.int(4),
+          id: row.int(0), cardId: row.int(1), rating: AnkiReview.Rating(rawValue: ease),
+          kind: reviewKind(kind), interval: row.int(3), lastInterval: row.int(4),
           easeFactor: Int(row.int(5)), duration: .milliseconds(row.int(6))))
     }
     return reviews

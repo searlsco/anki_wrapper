@@ -23,7 +23,7 @@ let package = Package(
     ),
     .testTarget(
       name: "AnkiWrapperTests",
-      dependencies: ["AnkiWrapper"],
+      dependencies: ["AnkiWrapper", .product(name: "libzstd", package: "zstd")],
       resources: [.copy("Fixtures")]
     ),
   ]

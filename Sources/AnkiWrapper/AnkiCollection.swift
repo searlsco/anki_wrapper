@@ -9,8 +9,16 @@ import Foundation
 /// Reading blocks on file I/O and decompression, so call it off the main
 /// thread.
 public struct AnkiCollection: Sendable, Hashable {
+  /// The largest collection database `init(contentsOf:)` will decompress
+  /// unless told otherwise: well past any real learner's collection, and
+  /// small enough that a hostile package cannot fill a device's disk.
+  public static let defaultMaximumDatabaseSize: Int64 = 2 << 30
+
   /// Which of Anki's package layouts the file used.
   public var format: AnkiPackageFormat
+  /// When the collection was created. Review cards' `due` counts days from
+  /// the day this falls in.
+  public var createdAt: Date
   public var decks: [AnkiDeck]
   public var notetypes: [AnkiNotetype]
   public var notes: [AnkiNote]
@@ -19,10 +27,11 @@ public struct AnkiCollection: Sendable, Hashable {
   public var reviews: [AnkiReview]
 
   public init(
-    format: AnkiPackageFormat, decks: [AnkiDeck], notetypes: [AnkiNotetype],
+    format: AnkiPackageFormat, createdAt: Date, decks: [AnkiDeck], notetypes: [AnkiNotetype],
     notes: [AnkiNote], cards: [AnkiCard], reviews: [AnkiReview]
   ) {
     self.format = format
+    self.createdAt = createdAt
     self.decks = decks
     self.notetypes = notetypes
     self.notes = notes
@@ -34,8 +43,14 @@ public struct AnkiCollection: Sendable, Hashable {
   /// subdecks), in any layout Anki has written: the current zstd-compressed
   /// one, the "support older Anki versions" one, and the original one that
   /// AnkiWeb shared decks and genanki still produce.
-  public init(contentsOf url: URL) throws(AnkiPackageError) {
-    self = try PackageReader.read(url)
+  ///
+  /// A collection database larger than `maximumDatabaseSize` bytes once
+  /// decompressed is refused with `AnkiPackageError.tooLarge` before it is
+  /// written out in full.
+  public init(
+    contentsOf url: URL, maximumDatabaseSize: Int64 = defaultMaximumDatabaseSize
+  ) throws(AnkiPackageError) {
+    self = try PackageReader.read(url, maximumDatabaseSize: maximumDatabaseSize)
   }
 }
 
@@ -155,6 +170,20 @@ public struct AnkiCard: Sendable, Hashable, Identifiable {
     case unknown(Int)
   }
 
+  /// FSRS's model of how well the learner knows a card, kept by
+  /// collections that schedule with FSRS.
+  public struct MemoryState: Sendable, Hashable {
+    /// Days until recall probability falls to 90%.
+    public var stability: Double
+    /// From 1 (easiest) to 10 (hardest).
+    public var difficulty: Double
+
+    public init(stability: Double, difficulty: Double) {
+      self.stability = stability
+      self.difficulty = difficulty
+    }
+  }
+
   public var id: Int64
   public var noteId: Int64
   /// The card's home deck, even while a filtered deck has borrowed it.
@@ -166,19 +195,26 @@ public struct AnkiCard: Sendable, Hashable, Identifiable {
   public var ordinal: Int
   public var kind: Kind
   public var queue: Queue
-  /// For new cards, the position Anki introduces them in. Otherwise a
-  /// day number or timestamp, depending on `queue`.
+  /// For new cards, the position Anki introduces them in; for review
+  /// and day-learning cards, days since the day of
+  /// `AnkiCollection.createdAt`; for learning cards, seconds since 1970. A
+  /// card a filtered deck has borrowed reports the value its home deck
+  /// will restore.
   public var due: Int64
-  /// Days for review cards; negative seconds for cards in learning.
+  /// Days for review and relearning cards; zero for new and learning ones.
   public var interval: Int64
-  /// Ease in permille (2500 is 250%); zero for new cards and under FSRS.
+  /// Ease in permille (2500 is 250%); zero for new cards. Collections that
+  /// schedule with FSRS keep writing it but schedule from `memoryState`.
   public var easeFactor: Int
   public var reviewCount: Int
   public var lapseCount: Int
+  /// Present when the collection schedules this card with FSRS.
+  public var memoryState: MemoryState?
 
   public init(
     id: Int64, noteId: Int64, deckId: Int64, filteredDeckId: Int64?, ordinal: Int, kind: Kind,
-    queue: Queue, due: Int64, interval: Int64, easeFactor: Int, reviewCount: Int, lapseCount: Int
+    queue: Queue, due: Int64, interval: Int64, easeFactor: Int, reviewCount: Int, lapseCount: Int,
+    memoryState: MemoryState? = nil
   ) {
     self.id = id
     self.noteId = noteId
@@ -192,11 +228,14 @@ public struct AnkiCard: Sendable, Hashable, Identifiable {
     self.easeFactor = easeFactor
     self.reviewCount = reviewCount
     self.lapseCount = lapseCount
+    self.memoryState = memoryState
   }
 }
 
 public struct AnkiReview: Sendable, Hashable, Identifiable {
-  /// The answer button pressed.
+  /// The answer button pressed. Collections from Anki's retired v1
+  /// scheduler numbered learning answers differently; those are
+  /// translated to these buttons on reading.
   public enum Rating: Int, Sendable, Hashable {
     case again = 1
     case hard = 2
@@ -229,8 +268,8 @@ public struct AnkiReview: Sendable, Hashable, Identifiable {
   public var interval: Int64
   /// The interval before this review, in the same units.
   public var lastInterval: Int64
-  /// Ease in permille after this review, or FSRS difficulty scaled by 100
-  /// for collections that use FSRS.
+  /// Ease in permille after this review. Collections that schedule with
+  /// FSRS store a transformed difficulty here instead.
   public var easeFactor: Int
   /// How long the learner took to answer.
   public var duration: Duration
@@ -267,4 +306,6 @@ public enum AnkiPackageError: Error, Sendable, Hashable {
   case corruptEntry(String)
   /// The collection database could not be read.
   case database(String)
+  /// An entry decompresses to more than the reader was allowed to write.
+  case tooLarge(String)
 }
