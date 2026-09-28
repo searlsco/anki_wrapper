@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-09-28
+
 ### Fixed
 
 - A database whose b-tree loops back on itself (a few pages that read as
