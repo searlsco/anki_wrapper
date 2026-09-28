@@ -17,25 +17,23 @@ final class SQLiteDatabase {
     else {
       let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "cannot open"
       sqlite3_close(handle)
+      handle = nil
       throw .database(message)
     }
     // Nothing the file's schema declares may call functions or run code
     // on our behalf.
     sqlite3_exec(handle, "PRAGMA trusted_schema = OFF", nil, nil, nil)
     // Anki's tables declare this collation, and SQLite refuses to query
-    // them until something by that name is registered.
+    // them until something by that name is registered. No query here
+    // orders by it, so a plain byte comparison, which allocates nothing,
+    // does.
     sqlite3_create_collation_v2(
       handle, "unicase", SQLITE_UTF8, nil,
       { _, leftLength, left, rightLength, right in
-        let lhs = String(
-          decoding: UnsafeRawBufferPointer(start: left, count: Int(leftLength)), as: UTF8.self)
-        let rhs = String(
-          decoding: UnsafeRawBufferPointer(start: right, count: Int(rightLength)), as: UTF8.self)
-        switch lhs.lowercased().compare(rhs.lowercased()) {
-        case .orderedAscending: return -1
-        case .orderedSame: return 0
-        case .orderedDescending: return 1
-        }
+        let shared = Int(min(leftLength, rightLength))
+        let order = shared == 0 ? 0 : memcmp(left, right, shared)
+        if order != 0 { return order < 0 ? -1 : 1 }
+        return leftLength == rightLength ? 0 : (leftLength < rightLength ? -1 : 1)
       }, nil)
   }
 

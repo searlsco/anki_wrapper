@@ -136,7 +136,7 @@ enum CollectionReader {
   {
     var decks: [AnkiDeck] = []
     try reserve(&decks, for: "decks", in: database, budget)
-    try database.query("SELECT id, name, kind FROM decks ORDER BY id") {
+    try database.query("SELECT id, name, kind FROM decks ORDER BY rowid") {
       row throws(AnkiPackageError) in
       // `kind` holds a oneof: 1 is a normal deck, 2 a filtered one.
       let kind = ProtobufMessage(row.data(2), keeping: [1, 2])
@@ -151,26 +151,34 @@ enum CollectionReader {
   private static func modernNotetypes(_ database: SQLiteDatabase, _ budget: Budget)
     throws(AnkiPackageError) -> [AnkiNotetype]
   {
-    var fields: [Int64: [String]] = [:]
-    try database.query("SELECT ntid, name FROM fields ORDER BY ntid, ord") {
+    // Rows come in whatever order the file keeps them and are sorted here:
+    // an ORDER BY over columns a hostile file declared could make SQLite
+    // hold every key in memory the budget never sees.
+    var fieldRows: [Int64: [(ord: Int64, name: String)]] = [:]
+    try database.query("SELECT ntid, ord, name FROM fields") {
       row throws(AnkiPackageError) in
       try budget.charge(groupedRowCost)
-      fields[row.int(0), default: []].append(try budget.string(row.string(1)))
+      fieldRows[row.int(0), default: []].append((row.int(1), try budget.string(row.string(2))))
     }
-    var templates: [Int64: [AnkiTemplate]] = [:]
-    try database.query("SELECT ntid, name, config FROM templates ORDER BY ntid, ord") {
+    let fields = fieldRows.mapValues { $0.sorted { $0.ord < $1.ord }.map(\.name) }
+    var templateRows: [Int64: [(ord: Int64, template: AnkiTemplate)]] = [:]
+    try database.query("SELECT ntid, ord, name, config FROM templates") {
       row throws(AnkiPackageError) in
       try budget.charge(groupedRowCost)
-      let config = ProtobufMessage(row.data(2), keeping: [1, 2])
-      templates[row.int(0), default: []].append(
-        AnkiTemplate(
-          name: try budget.string(row.string(1)),
-          questionFormat: try budget.string(config?.string(1) ?? ""),
-          answerFormat: try budget.string(config?.string(2) ?? "")))
+      let config = ProtobufMessage(row.data(3), keeping: [1, 2])
+      templateRows[row.int(0), default: []].append(
+        (
+          row.int(1),
+          AnkiTemplate(
+            name: try budget.string(row.string(2)),
+            questionFormat: try budget.string(config?.string(1) ?? ""),
+            answerFormat: try budget.string(config?.string(2) ?? ""))
+        ))
     }
+    let templates = templateRows.mapValues { $0.sorted { $0.ord < $1.ord }.map(\.template) }
     var notetypes: [AnkiNotetype] = []
     try reserve(&notetypes, for: "notetypes", in: database, budget)
-    try database.query("SELECT id, name, config FROM notetypes ORDER BY id") {
+    try database.query("SELECT id, name, config FROM notetypes ORDER BY rowid") {
       row throws(AnkiPackageError) in
       let id = row.int(0)
       let isCloze = ProtobufMessage(row.data(2), keeping: [1])?.varint(1) == 1
@@ -256,7 +264,7 @@ enum CollectionReader {
   {
     var notes: [AnkiNote] = []
     try reserve(&notes, for: "notes", in: database, budget)
-    try database.query("SELECT id, guid, mid, mod, tags, flds FROM notes ORDER BY id") {
+    try database.query("SELECT id, guid, mid, mod, tags, flds FROM notes ORDER BY rowid") {
       row throws(AnkiPackageError) in
       notes.append(
         AnkiNote(
@@ -276,7 +284,7 @@ enum CollectionReader {
     try database.query(
       """
       SELECT id, nid, did, odid, ord, type, queue, due, ivl, factor, reps, lapses, odue, data
-      FROM cards ORDER BY id
+      FROM cards ORDER BY rowid
       """
     ) { row throws(AnkiPackageError) in
       let deck = row.int(2)
@@ -317,7 +325,7 @@ enum CollectionReader {
     var reviews: [AnkiReview] = []
     try reserve(&reviews, for: "revlog", in: database, budget)
     try database.query(
-      "SELECT id, cid, ease, ivl, lastIvl, factor, time, type FROM revlog ORDER BY id"
+      "SELECT id, cid, ease, ivl, lastIvl, factor, time, type FROM revlog ORDER BY rowid"
     ) { row throws(AnkiPackageError) in
       let kind = Int(row.int(7))
       var ease = Int(row.int(2))

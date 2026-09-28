@@ -281,6 +281,14 @@ import Testing
     #expect(reviews.first(where: { $0.id == 2000 })?.rating == .hard)
   }
 
+  @Test func ordersFieldsAndTemplatesItself() throws {
+    let notetype = try #require(
+      try AnkiCollection(contentsOf: Self.hostile("modern-reversed-rows.apkg")).notetypes.first)
+
+    #expect(notetype.fields == ["Front", "Back", "Extra"])
+    #expect(notetype.templates.map(\.name) == ["Recognition", "Production"])
+  }
+
   @Test func chargesGroupedFieldRowsForTheirContainers() {
     #expect(throws: AnkiPackageError.tooLarge("collection")) {
       try AnkiCollection(

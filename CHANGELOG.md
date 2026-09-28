@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- No query asks SQLite to sort: rows are read in stored order, which a
+  hostile schema could otherwise turn into an unbudgeted in-memory sort.
+- The `unicase` collation compares bytes without allocating.
+- A failed database open no longer closes its handle twice.
+
 ## [0.1.4] - 2026-09-28
 
 ### Fixed

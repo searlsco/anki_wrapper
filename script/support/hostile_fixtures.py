@@ -217,7 +217,7 @@ write(
 
 # A modern collection whose fields table holds a hundred thousand rows, each
 # under a notetype of its own: tiny on disk, costly to group in memory.
-def modern_many_fields():
+def modern_many_fields(fill=None):
     with tempfile.TemporaryDirectory() as scratch:
         path = os.path.join(scratch, "collection.anki21b")
         db = sqlite3.connect(os.path.join(scratch, "collection.sqlite"))
@@ -239,9 +239,12 @@ def modern_many_fields():
             INSERT INTO col VALUES (1, 1400000000, '{}');
             """
         )
-        db.executemany(
-            "INSERT INTO fields VALUES (?, 0, '', x'')", ((i,) for i in range(100_000))
-        )
+        if fill:
+            fill(db)
+        else:
+            db.executemany(
+                "INSERT INTO fields VALUES (?, 0, '', x'')", ((i,) for i in range(100_000))
+            )
         db.commit()
         db.close()
         subprocess.run(
@@ -254,4 +257,20 @@ def modern_many_fields():
 write(
     "modern-many-fields.apkg",
     zip_bytes([("meta", b"\x08\x03"), ("collection.anki21b", modern_many_fields())]),
+)
+
+
+# A notetype whose field and template rows are stored in reverse order:
+# the reader orders them itself rather than asking SQLite to sort.
+def reversed_rows(db):
+    db.execute("INSERT INTO notetypes VALUES (1, 'Vocab', x'')")
+    for ord_, name in reversed(list(enumerate(["Front", "Back", "Extra"]))):
+        db.execute("INSERT INTO fields VALUES (1, ?, ?, x'')", (ord_, name))
+    for ord_, name in reversed(list(enumerate(["Recognition", "Production"]))):
+        db.execute("INSERT INTO templates VALUES (1, ?, ?, x'')", (ord_, name))
+
+
+write(
+    "modern-reversed-rows.apkg",
+    zip_bytes([("meta", b"\x08\x03"), ("collection.anki21b", modern_many_fields(reversed_rows))]),
 )
