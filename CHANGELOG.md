@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-09-28
+
 ### Fixed
 
 - Splitting a field builds its pieces in one reserved array, within what
