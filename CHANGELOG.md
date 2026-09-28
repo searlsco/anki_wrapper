@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-09-28
+
 ### Fixed
 
 - Loading a collection's schema runs under a work limit, and anything but
