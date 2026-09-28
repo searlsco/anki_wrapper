@@ -12,5 +12,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: swift --version
       - name: Run tests
         run: ./script/test

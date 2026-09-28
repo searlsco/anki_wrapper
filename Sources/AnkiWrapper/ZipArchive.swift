@@ -82,9 +82,11 @@ struct ZipArchive {
 
     var checksum = CRC32()
     var produced: UInt64 = 0
-    let emit: (Data) throws(AnkiPackageError) -> Void = { chunk in
+    let emit: (Data) throws(AnkiPackageError) -> Void = { chunk throws(AnkiPackageError) in
       produced += UInt64(chunk.count)
-      guard produced <= entry.uncompressedSize else { throw .corruptEntry(entry.name) }
+      guard produced <= entry.uncompressedSize else {
+        throw AnkiPackageError.corruptEntry(entry.name)
+      }
       checksum.update(chunk)
       sink(chunk)
     }
