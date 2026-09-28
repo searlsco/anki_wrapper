@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A legacy deck name made of `::` separators is charged against the memory
+  cap before it is split, like every other field.
+
 ## [0.1.0] - 2026-09-28
 
 ### Added

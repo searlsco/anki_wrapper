@@ -55,6 +55,14 @@ enum CollectionReader {
 
     /// `text` split at `separator`, charged for every piece before any is
     /// made.
+    /// A legacy deck name split at Anki's `::`, charged for every piece
+    /// before any is made (each colon bounds at most one piece).
+    func deckPath(_ name: String) throws(AnkiPackageError) -> [String] {
+      let pieces = Int64(name.utf8.count { $0 == UInt8(ascii: ":") }) + 1
+      try charge(Int64(name.utf8.count) + pieces * Self.stringOverhead)
+      return name.components(separatedBy: "::")
+    }
+
     func split(_ text: String, at separator: Character, omittingEmpty: Bool = false)
       throws(AnkiPackageError) -> [String]
     {
@@ -190,11 +198,11 @@ enum CollectionReader {
     } catch {
       throw .database("unreadable deck or notetype JSON: \(error)")
     }
-    let decks = legacyDecks.compactMap { key, deck in
-      Int64(key).map {
-        AnkiDeck(
-          id: $0, path: deck.name.components(separatedBy: "::"), isFiltered: deck.dyn == 1)
-      }
+    var decks: [AnkiDeck] = []
+    for (key, deck) in legacyDecks {
+      guard let id = Int64(key) else { continue }
+      decks.append(
+        AnkiDeck(id: id, path: try budget.deckPath(deck.name), isFiltered: deck.dyn == 1))
     }
     let notetypes = legacyModels.compactMap { key, model in
       Int64(key).map {

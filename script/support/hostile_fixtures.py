@@ -27,7 +27,7 @@ def zip_bytes(entries, method=zipfile.ZIP_STORED):
     return buffer.getvalue()
 
 
-def legacy_collection(build):
+def legacy_collection(build, decks=None):
     """A minimal schema 11 collection, adjusted by `build(db)`."""
     with tempfile.TemporaryDirectory() as scratch:
         path = os.path.join(scratch, "collection.anki2")
@@ -42,7 +42,7 @@ def legacy_collection(build):
                 ],
             }
         }
-        decks = {"1": {"name": "Default", "dyn": 0}, "2": {"name": "Cram", "dyn": 1}}
+        decks = decks or {"1": {"name": "Default", "dyn": 0}, "2": {"name": "Cram", "dyn": 1}}
         db.executescript(
             """
             CREATE TABLE col (id integer PRIMARY KEY, crt integer, conf text,
@@ -153,4 +153,20 @@ def separator_field(db):
 write(
     "separator-field.apkg",
     zip_bytes([("collection.anki2", legacy_collection(separator_field))], zipfile.ZIP_DEFLATED),
+)
+
+
+def empty_notes(db):
+    db.execute("CREATE TABLE notes (id integer PRIMARY KEY, guid text, mid integer, "
+               "mod integer, tags text, flds text)")
+
+
+# A deck name of nothing but separators: a small file whose one name would
+# split into two million pieces.
+write(
+    "separator-deck-name.apkg",
+    zip_bytes(
+        [("collection.anki2", legacy_collection(empty_notes, {"1": {"name": "::" * 2_000_000, "dyn": 0}}))],
+        zipfile.ZIP_DEFLATED,
+    ),
 )

@@ -253,12 +253,12 @@ import Testing
     }
   }
 
-  @Test func refusesContentsThatWouldOutgrowTheCapInMemory() {
-    // A 2 MB database, well under the cap, whose one field splits into two
-    // million strings.
+  @Test(arguments: ["separator-field.apkg", "separator-deck-name.apkg"])
+  func refusesContentsThatWouldOutgrowTheCapInMemory(name: String) {
+    // A database of a few megabytes, well under the cap, with a field or a
+    // deck name that splits into millions of strings.
     #expect(throws: AnkiPackageError.tooLarge("collection")) {
-      try AnkiCollection(
-        contentsOf: Self.hostile("separator-field.apkg"), maximumDatabaseSize: 10_000_000)
+      try AnkiCollection(contentsOf: Self.hostile(name), maximumDatabaseSize: 10_000_000)
     }
   }
 
