@@ -85,8 +85,17 @@ enum CollectionReader {
       let byte = separator.asciiValue ?? 0
       let pieces = Int64(text.utf8.count { $0 == byte }) + 1
       try charge(Int64(text.utf8.count) + pieces * Self.stringOverhead)
-      return text.split(separator: separator, omittingEmptySubsequences: omittingEmpty)
-        .map(String.init)
+      // One pass into an array reserved up front: `split` would build a
+      // second array of every piece first, at over twice the charge.
+      var result: [String] = []
+      result.reserveCapacity(Int(pieces))
+      var start = text.startIndex
+      while let end = text[start...].firstIndex(of: separator) {
+        if !(omittingEmpty && start == end) { result.append(String(text[start..<end])) }
+        start = text.index(after: end)
+      }
+      if !(omittingEmpty && start == text.endIndex) { result.append(String(text[start...])) }
+      return result
     }
   }
 

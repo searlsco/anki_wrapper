@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Splitting a field builds its pieces in one reserved array, within what
+  the memory cap charged, rather than through a second array of them all.
+
 ## [0.1.7] - 2026-09-28
 
 ### Fixed
