@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-28
+
 ### Fixed
 
 - Rows are counted from each table itself, never an index the file
