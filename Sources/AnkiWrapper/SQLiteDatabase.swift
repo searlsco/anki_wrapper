@@ -35,6 +35,46 @@ final class SQLiteDatabase {
         if order != 0 { return order < 0 ? -1 : 1 }
         return leftLength == rightLength ? 0 : (leftLength < rightLength ? -1 : 1)
       }, nil)
+    try verifySchema()
+  }
+
+  /// Loading a schema is work the file chooses: tens of thousands of
+  /// indexes cost quadratic time, and a chain of views compiled for any
+  /// schema query costs exponential time. So the load runs under a work
+  /// limit (a real Anki schema needs a sliver of it), and anything but
+  /// plain tables and indexes is refused before any other query runs.
+  private static let schemaWorkLimit: Int32 = 100
+  private static let plainDefinitions = [
+    "CREATE TABLE ", "CREATE INDEX ", "CREATE UNIQUE INDEX ",
+  ]
+
+  private final class WorkLimit {
+    var remaining = SQLiteDatabase.schemaWorkLimit
+  }
+
+  private func verifySchema() throws(AnkiPackageError) {
+    let limit = WorkLimit()
+    sqlite3_progress_handler(
+      handle, 1000,
+      { pointer in
+        guard let pointer else { return 1 }
+        let limit = Unmanaged<WorkLimit>.fromOpaque(pointer).takeUnretainedValue()
+        limit.remaining -= 1
+        return limit.remaining < 0 ? 1 : 0
+      }, Unmanaged.passUnretained(limit).toOpaque())
+    defer {
+      sqlite3_progress_handler(handle, 0, nil, nil)
+      withExtendedLifetime(limit) {}
+    }
+    var unexpected: String?
+    try query("SELECT type, name, sql FROM sqlite_master") { row in
+      let definition = row.isNull(2) ? nil : row.string(2)
+      let plain =
+        ["table", "index"].contains(row.string(0))
+        && (definition.map { sql in Self.plainDefinitions.contains { sql.hasPrefix($0) } } ?? true)
+      if !plain, unexpected == nil { unexpected = "\(row.string(0)) \(row.string(1))" }
+    }
+    if let unexpected { throw .database("unexpected schema object: \(unexpected)") }
   }
 
   deinit {

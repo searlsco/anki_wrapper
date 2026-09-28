@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Loading a collection's schema runs under a work limit, and anything but
+  plain tables and indexes is refused before any other query, so a small
+  file can't pin a core with thousands of indexes or a chain of views.
+
 ## [0.1.8] - 2026-09-28
 
 ### Fixed

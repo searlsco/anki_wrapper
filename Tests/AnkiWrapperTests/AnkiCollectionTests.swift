@@ -240,19 +240,22 @@ import Testing
     }
   }
 
-  @Test func refusesAViewInPlaceOfATable() {
-    #expect(throws: AnkiPackageError.database("notes is not a table")) {
-      try AnkiCollection(contentsOf: Self.hostile("notes-view.apkg"))
+  /// Refused as a database the reader won't read, whichever check (the
+  /// schema's objects, or a table's kind) catches it first.
+  private func expectRefused(_ name: String) {
+    #expect {
+      try AnkiCollection(contentsOf: Self.hostile(name))
+    } throws: { error in
+      if case .database = error as? AnkiPackageError { true } else { false }
     }
   }
 
   @Test(arguments: [
-    "notes-generated-column.apkg", "notes-virtual-table.apkg", "notes-disguised-virtual-table.apkg",
+    "notes-view.apkg", "notes-generated-column.apkg", "notes-virtual-table.apkg",
+    "notes-disguised-virtual-table.apkg", "view-chain.apkg", "many-indexes.apkg",
   ])
-  func refusesATableThatRunsCodeWhenRead(name: String) {
-    #expect(throws: AnkiPackageError.database("notes is not a table")) {
-      try AnkiCollection(contentsOf: Self.hostile(name))
-    }
+  func refusesASchemaThatRunsCodeOrCostsTime(name: String) {
+    expectRefused(name)
   }
 
   @Test(arguments: ["separator-field.apkg", "separator-deck-name.apkg"])

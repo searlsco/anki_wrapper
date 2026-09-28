@@ -314,3 +314,29 @@ write(
     "revlog-rowid-column.apkg",
     zip_bytes([("collection.anki2", legacy_collection(revlog_rowid_column))]),
 )
+
+
+# Views that each reference the one before twice: compiling them for any
+# schema query costs time exponential in the chain.
+def view_chain(db):
+    empty_notes(db)
+    db.execute("CREATE VIEW v0 AS SELECT 1 AS x")
+    for i in range(1, 40):
+        db.execute(f"CREATE VIEW v{i} AS SELECT * FROM v{i - 1} UNION ALL SELECT * FROM v{i - 1}")
+
+
+write("view-chain.apkg", zip_bytes([("collection.anki2", legacy_collection(view_chain))]))
+
+
+# Twenty thousand indexes on one table: loading the schema checks each
+# against every other.
+def many_indexes(db):
+    empty_notes(db)
+    for i in range(20_000):
+        db.execute(f"CREATE INDEX ix{i} ON notes (id)")
+
+
+write(
+    "many-indexes.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(many_indexes))], zipfile.ZIP_DEFLATED),
+)
