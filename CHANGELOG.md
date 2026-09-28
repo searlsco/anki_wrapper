@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A table declaring its own `rowid` column is refused, since it would turn
+  reading in rowid order back into a sort.
+- Every value is charged before it is copied out of the database, and card
+  data or settings too large to be real are dropped by SQLite unread.
+
 ## [0.1.6] - 2026-09-28
 
 ### Fixed

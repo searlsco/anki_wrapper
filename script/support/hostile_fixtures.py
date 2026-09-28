@@ -300,3 +300,17 @@ write(
     "lying-revlog-index.apkg",
     zip_bytes([("collection.anki2", legacy_collection(lying_revlog_index))], zipfile.ZIP_DEFLATED),
 )
+
+
+# A revlog declaring a column of its own named rowid.
+def revlog_rowid_column(db):
+    empty_notes(db)
+    db.execute("DROP TABLE revlog")
+    db.execute("CREATE TABLE revlog (rowid text, id integer, cid integer, ease integer, "
+               "ivl integer, lastIvl integer, factor integer, time integer, type integer)")
+
+
+write(
+    "revlog-rowid-column.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(revlog_rowid_column))]),
+)

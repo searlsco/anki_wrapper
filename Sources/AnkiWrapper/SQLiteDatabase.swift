@@ -50,11 +50,14 @@ final class SQLiteDatabase {
     var type: String?
     try query("PRAGMA main.table_list('\(name)')") { row in type = row.string(2) }
     guard type == "table" else { return false }
-    var hidden = false
+    // A column of the table's own named like the rowid would take over
+    // `ORDER BY rowid`, turning a b-tree walk back into a sort.
+    let rowidNames: Set<String> = ["rowid", "_rowid_", "oid"]
+    var plain = true
     try query("PRAGMA table_xinfo('\(name)')") { row in
-      if row.int(6) != 0 { hidden = true }
+      if row.int(6) != 0 || rowidNames.contains(row.string(1).lowercased()) { plain = false }
     }
-    return !hidden
+    return plain
   }
 
   func query(_ sql: String, row: (Row) throws(AnkiPackageError) -> Void) throws(AnkiPackageError) {
@@ -77,6 +80,10 @@ final class SQLiteDatabase {
 
     func int(_ column: Int32) -> Int64 {
       sqlite3_column_int64(statement, column)
+    }
+
+    func byteCount(_ column: Int32) -> Int {
+      Int(sqlite3_column_bytes(statement, column))
     }
 
     func isNull(_ column: Int32) -> Bool {

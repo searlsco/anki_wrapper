@@ -63,8 +63,12 @@ enum CollectionReader {
       return text
     }
 
-    /// `text` split at `separator`, charged for every piece before any is
-    /// made.
+    /// Charges for copying these columns out of the row, before any is
+    /// copied: a value's copy is memory too, whatever becomes of it after.
+    func copying(_ columns: Int32..., of row: SQLiteDatabase.Row) throws(AnkiPackageError) {
+      for column in columns { try charge(Int64(row.byteCount(column))) }
+    }
+
     /// A legacy deck name split at Anki's `::`, charged for every piece
     /// before any is made (each colon bounds at most one piece).
     func deckPath(_ name: String) throws(AnkiPackageError) -> [String] {
@@ -73,6 +77,8 @@ enum CollectionReader {
       return name.components(separatedBy: "::")
     }
 
+    /// `text` split at `separator`, charged for every piece before any is
+    /// made.
     func split(_ text: String, at separator: Character, omittingEmpty: Bool = false)
       throws(AnkiPackageError) -> [String]
     {
@@ -124,7 +130,12 @@ enum CollectionReader {
     throws(AnkiPackageError) -> Int
   {
     var version = 1
-    try database.query("SELECT val FROM config WHERE KEY = 'schedVer'") {
+    try database.query(
+      """
+      SELECT CASE WHEN length(CAST(val AS BLOB)) <= \(maximumSettingsSize) THEN val END
+      FROM config WHERE KEY = 'schedVer'
+      """
+    ) {
       row throws(AnkiPackageError) in
       let value = row.data(0)
       guard value.count <= maximumSettingsSize else { return }
@@ -141,6 +152,7 @@ enum CollectionReader {
     try database.query("SELECT id, name, kind FROM decks ORDER BY rowid") {
       row throws(AnkiPackageError) in
       // `kind` holds a oneof: 1 is a normal deck, 2 a filtered one.
+      try budget.copying(1, 2, of: row)
       let kind = ProtobufMessage(row.data(2), keeping: [1, 2])
       decks.append(
         AnkiDeck(
@@ -160,6 +172,7 @@ enum CollectionReader {
     try database.query("SELECT ntid, ord, name FROM fields") {
       row throws(AnkiPackageError) in
       try budget.charge(groupedRowCost)
+      try budget.copying(2, of: row)
       fieldRows[row.int(0), default: []].append((row.int(1), try budget.string(row.string(2))))
     }
     let fields = fieldRows.mapValues { $0.sorted { $0.ord < $1.ord }.map(\.name) }
@@ -167,6 +180,7 @@ enum CollectionReader {
     try database.query("SELECT ntid, ord, name, config FROM templates") {
       row throws(AnkiPackageError) in
       try budget.charge(groupedRowCost)
+      try budget.copying(2, 3, of: row)
       let config = ProtobufMessage(row.data(3), keeping: [1, 2])
       templateRows[row.int(0), default: []].append(
         (
@@ -183,6 +197,7 @@ enum CollectionReader {
     try database.query("SELECT id, name, config FROM notetypes ORDER BY rowid") {
       row throws(AnkiPackageError) in
       let id = row.int(0)
+      try budget.copying(1, 2, of: row)
       let isCloze = ProtobufMessage(row.data(2), keeping: [1])?.varint(1) == 1
       notetypes.append(
         AnkiNotetype(
@@ -222,6 +237,7 @@ enum CollectionReader {
     var decksJson = ""
     var modelsJson = ""
     try database.query("SELECT decks, models FROM col") { row throws(AnkiPackageError) in
+      try budget.copying(0, 1, of: row)
       decksJson = try budget.string(row.string(0))
       modelsJson = try budget.string(row.string(1))
       // JSONDecoder indexes the whole document first, which measures at
@@ -268,6 +284,7 @@ enum CollectionReader {
     try reserve(&notes, for: "notes", in: database, budget)
     try database.query("SELECT id, guid, mid, mod, tags, flds FROM notes ORDER BY rowid") {
       row throws(AnkiPackageError) in
+      try budget.copying(1, 4, 5, of: row)
       notes.append(
         AnkiNote(
           id: row.int(0), guid: try budget.string(row.string(1)), notetypeId: row.int(2),
@@ -285,7 +302,8 @@ enum CollectionReader {
     try reserve(&cards, for: "cards", in: database, budget)
     try database.query(
       """
-      SELECT id, nid, did, odid, ord, type, queue, due, ivl, factor, reps, lapses, odue, data
+      SELECT id, nid, did, odid, ord, type, queue, due, ivl, factor, reps, lapses, odue,
+        CASE WHEN length(CAST(data AS BLOB)) <= \(maximumCardDataSize) THEN data END
       FROM cards ORDER BY rowid
       """
     ) { row throws(AnkiPackageError) in

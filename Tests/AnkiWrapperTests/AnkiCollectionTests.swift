@@ -289,6 +289,12 @@ import Testing
     #expect(notetype.templates.map(\.name) == ["Recognition", "Production"])
   }
 
+  @Test func refusesATableThatRedefinesItsRowid() {
+    #expect(throws: AnkiPackageError.database("revlog is not a table")) {
+      try AnkiCollection(contentsOf: Self.hostile("revlog-rowid-column.apkg"))
+    }
+  }
+
   @Test func countsRowsFromTheTableNotAnIndexTheFileSupplies() {
     // 5,000 reviews behind an index that counts none: 88-byte rows cost
     // about 440 KB, past a 300 KB cap only if they are counted.
