@@ -289,6 +289,15 @@ import Testing
     #expect(notetype.templates.map(\.name) == ["Recognition", "Production"])
   }
 
+  @Test func countsRowsFromTheTableNotAnIndexTheFileSupplies() {
+    // 5,000 reviews behind an index that counts none: 88-byte rows cost
+    // about 440 KB, past a 300 KB cap only if they are counted.
+    #expect(throws: AnkiPackageError.tooLarge("collection")) {
+      try AnkiCollection(
+        contentsOf: Self.hostile("lying-revlog-index.apkg"), maximumDatabaseSize: 300_000)
+    }
+  }
+
   @Test func chargesGroupedFieldRowsForTheirContainers() {
     #expect(throws: AnkiPackageError.tooLarge("collection")) {
       try AnkiCollection(

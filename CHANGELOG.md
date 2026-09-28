@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Rows are counted from each table itself, never an index the file
+  supplies, before memory is reserved for them.
+- Only the entries a collection needs are kept from the ZIP directory, and
+  a directory past 64 MiB is refused.
+
 ## [0.1.5] - 2026-09-28
 
 ### Fixed

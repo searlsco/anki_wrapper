@@ -91,7 +91,9 @@ enum CollectionReader {
     _ array: inout [Element], for table: String, in database: SQLiteDatabase, _ budget: Budget
   ) throws(AnkiPackageError) {
     var count: Int64 = 0
-    try database.query("SELECT COUNT(*) FROM \(table)") { row in count = row.int(0) }
+    // The table's own b-tree, which the rows are read from: an index the
+    // file supplies could count anything.
+    try database.query("SELECT COUNT(*) FROM \(table) NOT INDEXED") { row in count = row.int(0) }
     try budget.charge(count * Int64(MemoryLayout<Element>.stride))
     array.reserveCapacity(Int(count))
   }

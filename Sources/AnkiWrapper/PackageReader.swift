@@ -9,7 +9,9 @@ enum PackageReader {
   static func read(_ url: URL, maximumDatabaseSize: Int64) throws(AnkiPackageError)
     -> AnkiCollection
   {
-    let archive = try ZipArchive(url: url)
+    let archive = try ZipArchive(
+      url: url,
+      keeping: ["meta", "collection.anki21b", "collection.anki21", "collection.anki2"])
     defer { archive.close() }
     let (format, entry) = try collectionEntry(in: archive)
 

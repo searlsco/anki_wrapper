@@ -25,7 +25,13 @@ struct ZipArchive {
   private let fileSize: UInt64
   let entries: [String: Entry]
 
-  init(url: URL) throws(AnkiPackageError) {
+  /// A central directory this large lists about a million media files,
+  /// far past any real collection.
+  private static let maximumDirectorySize: UInt64 = 64 << 20
+
+  /// Only the entries named in `names` are kept, so a directory of
+  /// millions of records costs nothing past the one being read.
+  init(url: URL, keeping names: Set<String>) throws(AnkiPackageError) {
     do {
       handle = try FileHandle(forReadingFrom: url)
       fileSize = try handle.seekToEnd()
@@ -33,7 +39,7 @@ struct ZipArchive {
       throw .unreadable(error.localizedDescription)
     }
     let directory = try Self.centralDirectory(handle: handle, fileSize: fileSize)
-    entries = try Self.parseEntries(directory.bytes, count: directory.count)
+    entries = try Self.parseEntries(directory.bytes, count: directory.count, keeping: names)
   }
 
   func close() {
@@ -159,13 +165,14 @@ struct ZipArchive {
       size = record.uint64(at: 40)
       start = record.uint64(at: 48)
     }
+    guard size <= maximumDirectorySize else { throw .tooLarge("central directory") }
     guard size <= fileSize, start <= fileSize - size,
       let bytes = read(handle: handle, at: start, count: Int(size))
     else { throw .notAPackage }
     return (bytes, count)
   }
 
-  private static func parseEntries(_ bytes: Data, count: UInt64)
+  private static func parseEntries(_ bytes: Data, count: UInt64, keeping names: Set<String>)
     throws(AnkiPackageError) -> [String: Entry]
   {
     var entries: [String: Entry] = [:]
@@ -210,10 +217,12 @@ struct ZipArchive {
         extra += 4 + length
       }
 
-      entries[name] = Entry(
-        name: name, method: bytes.uint16(at: cursor + 10), flags: bytes.uint16(at: cursor + 8),
-        crc32: bytes.uint32(at: cursor + 16), compressedSize: compressed,
-        uncompressedSize: uncompressed, localHeaderOffset: offset)
+      if names.contains(name) {
+        entries[name] = Entry(
+          name: name, method: bytes.uint16(at: cursor + 10), flags: bytes.uint16(at: cursor + 8),
+          crc32: bytes.uint32(at: cursor + 16), compressedSize: compressed,
+          uncompressedSize: uncompressed, localHeaderOffset: offset)
+      }
       cursor = extraEnd + commentLength
     }
     return entries

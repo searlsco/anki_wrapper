@@ -274,3 +274,29 @@ write(
     "modern-reversed-rows.apkg",
     zip_bytes([("meta", b"\x08\x03"), ("collection.anki21b", modern_many_fields(reversed_rows))]),
 )
+
+
+# A revlog whose index has been swapped for an empty table's, so counting
+# through the index says zero while the table holds every row.
+def lying_revlog_index(db):
+    empty_notes(db)
+    db.execute("CREATE INDEX ix_revlog_cid ON revlog (cid)")
+    db.execute("CREATE TABLE decoy (x integer)")
+    db.execute("CREATE INDEX ix_decoy ON decoy (x)")
+    db.executemany(
+        "INSERT INTO revlog VALUES (?, 1, 3, 1, 0, 2500, 1000, 1)", ((i,) for i in range(1, 5001))
+    )
+    db.commit()
+    pages = dict(db.execute(
+        "SELECT name, rootpage FROM sqlite_master WHERE name IN ('ix_revlog_cid', 'ix_decoy')"))
+    db.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, False)
+    db.execute("PRAGMA writable_schema = ON")
+    db.execute("UPDATE sqlite_master SET rootpage = ? WHERE name = 'ix_revlog_cid'", (pages["ix_decoy"],))
+    db.execute("UPDATE sqlite_master SET rootpage = ? WHERE name = 'ix_decoy'", (pages["ix_revlog_cid"],))
+    db.execute("PRAGMA writable_schema = OFF")
+
+
+write(
+    "lying-revlog-index.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(lying_revlog_index))], zipfile.ZIP_DEFLATED),
+)
