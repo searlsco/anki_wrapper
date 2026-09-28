@@ -23,6 +23,13 @@ final class SQLiteDatabase {
     // Nothing the file's schema declares may call functions or run code
     // on our behalf.
     sqlite3_exec(handle, "PRAGMA trusted_schema = OFF", nil, nil, nil)
+    // Parsing a schema row happens between the instructions the work
+    // limit counts, at a cost the row chooses (2,000 columns, a partial
+    // index's megabyte literal). These keep each row's cost small, so the
+    // count bounds the whole load. Anki's widest table has 18 columns.
+    sqlite3_limit(handle, SQLITE_LIMIT_COLUMN, 64)
+    sqlite3_limit(handle, SQLITE_LIMIT_SQL_LENGTH, 1 << 16)
+    sqlite3_limit(handle, SQLITE_LIMIT_EXPR_DEPTH, 100)
     // Anki's tables declare this collation, and SQLite refuses to query
     // them until something by that name is registered. No query here
     // orders by it, so a plain byte comparison, which allocates nothing,

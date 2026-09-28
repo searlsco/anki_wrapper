@@ -340,3 +340,20 @@ write(
     "many-indexes.apkg",
     zip_bytes([("collection.anki2", legacy_collection(many_indexes))], zipfile.ZIP_DEFLATED),
 )
+
+
+# Indexes over hundreds of columns each: every row of the schema costs a
+# long parse between the instructions a work limit can count.
+def wide_indexes(db):
+    empty_notes(db)
+    columns = ", ".join(f"c{i}" for i in range(500))
+    db.execute(f"CREATE TABLE wide ({columns})")
+    backwards = ", ".join(f"c{i}" for i in reversed(range(500)))
+    for i in range(50):
+        db.execute(f"CREATE INDEX wix{i} ON wide ({backwards})")
+
+
+write(
+    "wide-indexes.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(wide_indexes))], zipfile.ZIP_DEFLATED),
+)
