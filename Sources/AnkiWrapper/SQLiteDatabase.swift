@@ -43,15 +43,22 @@ final class SQLiteDatabase {
     sqlite3_close(handle)
   }
 
-  /// Every table and view the file declares, by name. Reading only ever
-  /// queries names that are tables: a view in a table's place could run
-  /// an unbounded query.
-  func objectTypes() throws(AnkiPackageError) -> [String: String] {
-    var types: [String: String] = [:]
-    try query("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view')") { row in
-      types[row.string(0)] = row.string(1)
+  /// Whether `name` is an ordinary table: not a view, not a virtual table,
+  /// and without generated columns. Any of those runs code the file chose
+  /// when a row is read, which can be made to never finish.
+  func isPlainTable(_ name: String) throws(AnkiPackageError) -> Bool {
+    var definition: String?
+    try query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '\(name)'") { row in
+      definition = row.string(0)
     }
-    return types
+    guard let definition,
+      !definition.uppercased().hasPrefix("CREATE VIRTUAL TABLE")
+    else { return false }
+    var hidden = false
+    try query("PRAGMA table_xinfo('\(name)')") { row in
+      if row.int(6) != 0 { hidden = true }
+    }
+    return !hidden
   }
 
   func query(_ sql: String, row: (Row) throws(AnkiPackageError) -> Void) throws(AnkiPackageError) {

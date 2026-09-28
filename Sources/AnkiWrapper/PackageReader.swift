@@ -34,7 +34,8 @@ enum PackageReader {
     } else {
       try archive.extract(entry, to: database, limit: maximumDatabaseSize)
     }
-    return try CollectionReader.read(SQLiteDatabase(url: database), format: format)
+    return try CollectionReader.read(
+      SQLiteDatabase(url: database), format: format, maximumSize: maximumDatabaseSize)
   }
 
   /// Anki writes an old-format `collection.anki2` beside the real database

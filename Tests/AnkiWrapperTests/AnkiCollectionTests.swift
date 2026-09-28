@@ -246,6 +246,22 @@ import Testing
     }
   }
 
+  @Test(arguments: ["notes-generated-column.apkg", "notes-virtual-table.apkg"])
+  func refusesATableThatRunsCodeWhenRead(name: String) {
+    #expect(throws: AnkiPackageError.database("notes is not a table")) {
+      try AnkiCollection(contentsOf: Self.hostile(name))
+    }
+  }
+
+  @Test func refusesContentsThatWouldOutgrowTheCapInMemory() {
+    // A 2 MB database, well under the cap, whose one field splits into two
+    // million strings.
+    #expect(throws: AnkiPackageError.tooLarge("collection")) {
+      try AnkiCollection(
+        contentsOf: Self.hostile("separator-field.apkg"), maximumDatabaseSize: 10_000_000)
+    }
+  }
+
   @Test func refusesADatabaseLargerThanTheCapBeforeWritingItAll() throws {
     let url = try AnkiCollectionTests.fixture("collection.colpkg")
 

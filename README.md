@@ -51,9 +51,10 @@ Reading blocks on file I/O and decompression, so do it off the main thread.
 - **Old collections.** Review ratings from Anki's retired v1 scheduler are
   translated to today's four buttons, as Anki itself does on import.
 - **Untrusted files.** A package is treated as hostile input: sizes are
-  checked before anything is inflated, the collection database is capped
-  at `maximumDatabaseSize` (2 GiB by default), and its schema may not stand
-  a view in for a table or run code.
+  checked before anything is inflated, both the collection database and
+  what reading it holds in memory are capped at `maximumDatabaseSize`
+  (512 MiB by default), and the tables it reads must be ordinary ones (no
+  views, virtual tables, or generated columns).
 
 Field contents are returned exactly as Anki stores them: HTML, furigana
 brackets (`漢字[かんじ]`), cloze markup and `[sound:…]` references are

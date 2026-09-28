@@ -115,3 +115,42 @@ def v1_reviews(db):
 
 
 write("v1-scheduler.apkg", zip_bytes([("collection.anki2", legacy_collection(v1_reviews))]))
+
+
+# A generated `flds` column: still a table, but reading a row runs whatever
+# expression the file chose.
+def generated_fields(db):
+    db.execute("CREATE TABLE notes (id integer PRIMARY KEY, guid text, mid integer, "
+               "mod integer, tags text, raw text, "
+               "flds text GENERATED ALWAYS AS (printf('%.*c', 1000, 'x')) VIRTUAL)")
+
+
+write(
+    "notes-generated-column.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(generated_fields))]),
+)
+
+
+# A virtual table in place of `notes`.
+def virtual_notes(db):
+    db.execute("CREATE VIRTUAL TABLE notes USING fts5(guid, flds)")
+
+
+write(
+    "notes-virtual-table.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(virtual_notes))]),
+)
+
+
+# A 2 MB field of nothing but separators: a small file that would expand
+# into two million strings.
+def separator_field(db):
+    db.execute("CREATE TABLE notes (id integer PRIMARY KEY, guid text, mid integer, "
+               "mod integer, tags text, flds text)")
+    db.execute("INSERT INTO notes VALUES (1, 'guid', 1, 0, '', ?)", ("\x1f" * 2_000_000,))
+
+
+write(
+    "separator-field.apkg",
+    zip_bytes([("collection.anki2", legacy_collection(separator_field))], zipfile.ZIP_DEFLATED),
+)

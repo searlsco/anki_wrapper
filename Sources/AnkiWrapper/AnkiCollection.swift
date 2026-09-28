@@ -9,10 +9,11 @@ import Foundation
 /// Reading blocks on file I/O and decompression, so call it off the main
 /// thread.
 public struct AnkiCollection: Sendable, Hashable {
-  /// The largest collection database `init(contentsOf:)` will decompress
-  /// unless told otherwise: well past any real learner's collection, and
-  /// small enough that a hostile package cannot fill a device's disk.
-  public static let defaultMaximumDatabaseSize: Int64 = 2 << 30
+  /// The largest collection database `init(contentsOf:)` will decompress,
+  /// and the most memory it will fill reading one, unless told otherwise:
+  /// well past any real learner's collection, and small enough that a
+  /// hostile package cannot exhaust a phone's disk or memory.
+  public static let defaultMaximumDatabaseSize: Int64 = 512 << 20
 
   /// Which of Anki's package layouts the file used.
   public var format: AnkiPackageFormat
@@ -46,7 +47,8 @@ public struct AnkiCollection: Sendable, Hashable {
   ///
   /// A collection database larger than `maximumDatabaseSize` bytes once
   /// decompressed is refused with `AnkiPackageError.tooLarge` before it is
-  /// written out in full.
+  /// written out in full, as is one whose contents would take more than
+  /// that much memory to hold.
   public init(
     contentsOf url: URL, maximumDatabaseSize: Int64 = defaultMaximumDatabaseSize
   ) throws(AnkiPackageError) {
