@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-09-28
+
 ### Fixed
 
 - A schema row's parse cost is bounded (64 columns, 64 KiB of SQL), so
